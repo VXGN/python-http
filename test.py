@@ -1,71 +1,42 @@
-from typing import Any
+import asyncio
 import time
 import httpx
-from rich import print
-import asyncio
 
-BASE_URL = "https://httpbin.org/"
+BASE_URL = "https://httpbin.org"
 
+async def fetch(c): return (await c.get(f"{BASE_URL}/get")).text
+async def post(c): return (await c.post(f"{BASE_URL}/post")).text
+async def update(c): return (await c.put(f"{BASE_URL}/put")).text
+async def delete(c): return (await c.delete(f"{BASE_URL}/delete")).text
 
-async def fetch(c: httpx.AsyncClient) -> Any:
-    try:
-        r = await c.get(f"{BASE_URL}/get")
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
+async def perform_operations(c):
+    await asyncio.gather(fetch(c), post(c), update(c), delete(c))
 
-async def post(c: httpx.AsyncClient) -> Any:
-    try:
-        r = await c.post(f"{BASE_URL}/post")
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
+async def worker(iterations, client):
+    tasks = []
+    for _ in range(iterations):
+        tasks += [
+            asyncio.create_task(fetch(client)),
+            asyncio.create_task(post(client)),
+            asyncio.create_task(update(client)),
+            asyncio.create_task(delete(client)),
+        ]
+    await asyncio.gather(*tasks)
 
-async def update(c: httpx.AsyncClient) -> Any:
-    try:
-        r = await c.put(f"{BASE_URL}/put")
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
-
-async def delete(c: httpx.AsyncClient) -> Any:
-    try:
-        r = await c.delete(f"{BASE_URL}/delete")
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
-
-async def perform_operations(c: httpx.AsyncClient) -> None:
-    await asyncio.gather(
-        fetch(c),
-        post(c),
-        update(c),
-        delete(c),
-    )
-
-async def worker(total: int) -> None:
-    async with httpx.AsyncClient() as c:
-        await asyncio.gather(*(perform_operations(c) for _ in range(total)))
-
-async def main_async() -> None:
+async def main_async():
     start = time.perf_counter()
 
-    workers = 4
-    iterations = 25
+    async with httpx.AsyncClient(
+        http2=False,
+        limits=httpx.Limits(max_connections=1000, max_keepalive_connections=200),
+        timeout=5.0,
+    ) as client:
+        await asyncio.gather(*(worker(25, client) for _ in range(4)))
 
-    await asyncio.gather(*(worker(iterations) for _ in range(workers)))
+    print(f"time taken {time.perf_counter() - start:.2f} seconds")
 
-    end = time.perf_counter()
-    print(f"time taken {end - start:.2f} seconds")
-    print(f"Used {workers} workers with {iterations} iterations each")
-
-def main() -> None:
+def main():
     asyncio.run(main_async())
-
 
 if __name__ == "__main__":
     main()
