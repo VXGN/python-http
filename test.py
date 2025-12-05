@@ -6,8 +6,10 @@ BASE_URL = "https://httpbin.org"
 
 async def fetch(c): return (await c.get(f"{BASE_URL}/get")).text
 async def post(c): return (await c.post(f"{BASE_URL}/post")).text
+async def patch(c): return (await c.patch(f"{BASE_URL}/patch")).text
 async def update(c): return (await c.put(f"{BASE_URL}/put")).text
 async def delete(c): return (await c.delete(f"{BASE_URL}/delete")).text
+
 
 async def perform_operations(c):
     await asyncio.gather(fetch(c), post(c), update(c), delete(c))
@@ -18,6 +20,7 @@ async def worker(iterations, client):
         tasks += [
             asyncio.create_task(fetch(client)),
             asyncio.create_task(post(client)),
+            asyncio.create_task(patch(client)),
             asyncio.create_task(update(client)),
             asyncio.create_task(delete(client)),
         ]
