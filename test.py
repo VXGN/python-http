@@ -3,66 +3,68 @@ import time
 import httpx
 from tqdm.asyncio import tqdm
 from typing import Optional
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 BASE_URL = "https://httpbin.org"
+JWT_URL = os.getenv("JWT_URL")
+JWT_USERNAME = os.getenv("JWT_USERNAME")
+JWT_PASSWORD = os.getenv("JWT_PASSWORD")
 
 class HTTPError(Exception):
-    """Custom HTTP error"""
     pass
 
-async def fetch(c: httpx.AsyncClient) -> Optional[str]:
+async def get_jwt_token(client: httpx.AsyncClient) -> str:
+    response = await client.post(JWT_URL, data={"username": JWT_USERNAME, "password": JWT_PASSWORD})
+    response.raise_for_status()
+    token = response.json().get("access_token")
+    if not token:
+        raise HTTPError("Failed to get JWT token")
+    return token
+
+async def fetch(c: httpx.AsyncClient, token: str) -> Optional[str]:
     try:
-        response = await c.get(f"{BASE_URL}/get")
+        response = await c.get(f"{BASE_URL}/get", headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
         return response.text
-    except httpx.HTTPStatusError as e:
-        print(f"HTTP error {e.response.status_code}: {e}")
-        return None
-    except httpx.TimeoutException:
-        print("Request timed out")
-        return None
-    except httpx.RequestError as e:
-        print(f"Request error: {e}")
+    except:
         return None
 
-async def post(c: httpx.AsyncClient) -> Optional[str]:
+async def post(c: httpx.AsyncClient, token: str) -> Optional[str]:
     try:
-        response = await c.post(f"{BASE_URL}/post")
+        response = await c.post(f"{BASE_URL}/post", headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
         return response.text
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
-        print(f"POST error: {e}")
+    except:
         return None
 
-async def patch(c: httpx.AsyncClient) -> Optional[str]:
+async def patch(c: httpx.AsyncClient, token: str) -> Optional[str]:
     try:
-        response = await c.patch(f"{BASE_URL}/patch")
+        response = await c.patch(f"{BASE_URL}/patch", headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
         return response.text
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
-        print(f"PATCH error: {e}")
+    except:
         return None
 
-async def update(c: httpx.AsyncClient) -> Optional[str]:
+async def update(c: httpx.AsyncClient, token: str) -> Optional[str]:
     try:
-        response = await c.put(f"{BASE_URL}/put")
+        response = await c.put(f"{BASE_URL}/put", headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
         return response.text
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
-        print(f"PUT error: {e}")
+    except:
         return None
 
-async def delete(c: httpx.AsyncClient) -> Optional[str]:
+async def delete(c: httpx.AsyncClient, token: str) -> Optional[str]:
     try:
-        response = await c.delete(f"{BASE_URL}/delete")
+        response = await c.delete(f"{BASE_URL}/delete", headers={"Authorization": f"Bearer {token}"})
         response.raise_for_status()
         return response.text
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
-        print(f"DELETE error: {e}")
+    except:
         return None
 
-async def worker(iterations: int, client: httpx.AsyncClient, semaphore: asyncio.Semaphore):
-    """Worker to perform multiple HTTP operations"""
+async def worker(iterations: int, client: httpx.AsyncClient, semaphore: asyncio.Semaphore, token: str):
     async def limited_request(coro):
         async with semaphore:
             return await coro
@@ -70,11 +72,11 @@ async def worker(iterations: int, client: httpx.AsyncClient, semaphore: asyncio.
     tasks = []
     for _ in range(iterations):
         tasks.extend([
-            limited_request(fetch(client)),
-            limited_request(post(client)),
-            limited_request(patch(client)),
-            limited_request(update(client)),
-            limited_request(delete(client)),
+            limited_request(fetch(client, token)),
+            limited_request(post(client, token)),
+            limited_request(patch(client, token)),
+            limited_request(update(client, token)),
+            limited_request(delete(client, token)),
         ])
     
     results = []
@@ -99,9 +101,9 @@ async def main_async():
             connect=5.0
         ),
     ) as client:
+        token = await get_jwt_token(client)
         semaphore = asyncio.Semaphore(50)
-        
-        workers = [worker(25, client, semaphore) for _ in range(4)]
+        workers = [worker(25, client, semaphore, token) for _ in range(4)]
         all_results = await asyncio.gather(*workers)
         
         total_requests = sum(len(results) for results in all_results)
