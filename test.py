@@ -16,6 +16,14 @@ JWT_PASSWORD = os.getenv("JWT_PASSWORD")
 class HTTPError(Exception):
     pass
 
+async def head(c: httpx.AsyncClient, token: str) -> Optional[str]:
+    try:
+        response = await c.head(f"{BASE_URL}/get", headers={"Authorization": f"Bearer {token}"})
+        response.raise_for_status()
+        return str(response.headers)
+    except:
+        return None
+
 async def get_jwt_token(client: httpx.AsyncClient) -> str:
     response = await client.post(JWT_URL, data={"username": JWT_USERNAME, "password": JWT_PASSWORD})
     response.raise_for_status()
@@ -77,6 +85,7 @@ async def worker(iterations: int, client: httpx.AsyncClient, semaphore: asyncio.
             limited_request(patch(client, token)),
             limited_request(update(client, token)),
             limited_request(delete(client, token)),
+            limited_request(head(client, token)),
         ])
     
     results = []
